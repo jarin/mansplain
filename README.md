@@ -75,7 +75,7 @@ mansplain vim --stream
 ```bash
 export MANSPLAIN_API_KEY="your-perplexity-api-key"
 mansplain awk --provider perplexity
-mansplain grep --provider perplexity --model llama-3.1-sonar-large-128k-online
+mansplain grep --provider perplexity --model sonar
 ```
 
 #### Using OpenAI
@@ -159,7 +159,7 @@ export MANSPLAIN_API_KEY="your-perplexity-api-key"
 mansplain awk --provider perplexity
 ```
 
-Available models: `llama-3.1-sonar-small-128k-online`, `llama-3.1-sonar-large-128k-online`, `llama-3.1-sonar-huge-128k-online`
+Available models: `sonar` and stuff documented at [perplexity](https://docs.perplexity.ai/getting-started/models) 
 
 ### OpenAI
 
