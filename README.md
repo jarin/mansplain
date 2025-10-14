@@ -1,6 +1,7 @@
 # mansplain
 
 A Rust CLI tool that takes man pages and explains them to you in a slightly condescending, mansplaining tone using LLMs (Ollama, Perplexity, OpenAI, and compatible providers).
+Claude made most of this stuff. It looks fairly legit, but if it blows up your computer or eats your tokens, don't blame me.
 
 ## Installation
 
