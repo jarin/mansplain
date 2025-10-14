@@ -1,14 +1,16 @@
 # mansplain
 
-A Rust CLI tool that takes man pages and explains them to you in a slightly condescending, mansplaining tone using LLMs like Ollama.
+A Rust CLI tool that takes man pages and explains them to you in a slightly condescending, mansplaining tone using LLMs (Ollama, Perplexity, OpenAI, and compatible providers).
 
 ## Installation
 
 ### Prerequisites
 
 1. Install Rust (via [rustup](https://rustup.rs/) or [mise](https://mise.jdx.dev/))
-2. Install [Ollama](https://ollama.ai/) (or have access to a compatible LLM API)
-3. Pull a model: `ollama pull llama3.2`
+2. Choose your LLM provider:
+   - **Ollama** (default): Install [Ollama](https://ollama.ai/) and pull a model: `ollama pull llama3.2`
+   - **Perplexity**: Get an API key from [Perplexity](https://www.perplexity.ai/)
+   - **OpenAI**: Get an API key from [OpenAI](https://openai.com/)
 
 ### Build from source
 
@@ -50,28 +52,44 @@ mansplain 3 malloc
 mansplain [OPTIONS] <COMMAND> [SECTION]
 
 Options:
-  -m, --model <MODEL>      LLM model to use [default: llama3.2]
-  -a, --api-url <API_URL>  API endpoint URL [default: http://localhost:11434]
-  -p, --prompt <PROMPT>    Custom system prompt
-  -s, --stream             Use streaming output (shows text as it's generated)
-  -h, --help               Print help
+      --provider <PROVIDER>  LLM provider to use (ollama, perplexity, openai) [default: ollama]
+  -m, --model <MODEL>        LLM model to use
+  -a, --api-url <API_URL>    API endpoint URL (for Ollama or custom OpenAI-compatible endpoints)
+  -k, --api-key <API_KEY>    API key (for Perplexity, OpenAI, etc.)
+  -p, --prompt <PROMPT>      Custom system prompt
+  -s, --stream               Use streaming output (shows text as it's generated)
+  -h, --help                 Print help
 ```
 
 ### Examples
 
-Use a different model:
+#### Using Ollama (default)
+
 ```bash
 mansplain grep --model mistral
-```
-
-Enable streaming for real-time output:
-```bash
 mansplain vim --stream
 ```
 
-Custom API endpoint:
+#### Using Perplexity
+
 ```bash
-mansplain curl --api-url http://my-llm-server:8080
+export MANSPLAIN_API_KEY="your-perplexity-api-key"
+mansplain awk --provider perplexity
+mansplain grep --provider perplexity --model llama-3.1-sonar-large-128k-online
+```
+
+#### Using OpenAI
+
+```bash
+export MANSPLAIN_API_KEY="your-openai-api-key"
+mansplain curl --provider openai
+mansplain tar --provider openai --model gpt-4o
+```
+
+#### Custom API endpoint
+
+```bash
+mansplain sed --api-url http://my-llm-server:8080
 ```
 
 ### Environment Variables
@@ -79,9 +97,11 @@ mansplain curl --api-url http://my-llm-server:8080
 You can set defaults using environment variables:
 
 ```bash
-export MANSPLAIN_MODEL="llama3.1"
-export MANSPLAIN_API_URL="http://localhost:11434"
-export MANSPLAIN_PROMPT="Your custom system prompt here"
+export MANSPLAIN_PROVIDER="perplexity"       # LLM provider (ollama, perplexity, openai)
+export MANSPLAIN_MODEL="llama3.1"            # Model name
+export MANSPLAIN_API_URL="http://..."       # API endpoint URL
+export MANSPLAIN_API_KEY="your-api-key"     # API key (for Perplexity, OpenAI)
+export MANSPLAIN_PROMPT="Your custom prompt" # Custom system prompt
 ```
 
 ## Customizing the Prompt
@@ -100,17 +120,22 @@ mansplain ls --prompt "Explain this man page like I'm a pirate: Arr matey!"
 ## How It Works
 
 1. Fetches the man page using the system's `man` command
-2. Sends the man page content to an LLM (Ollama by default)
+2. Sends the man page content to your chosen LLM provider (Ollama, Perplexity, or OpenAI)
 3. The LLM explains it in a condescending, mansplaining tone
 4. Displays the explanation to you
 
 ## Requirements
 
 - Rust 1.86.0 or later
-- A running Ollama instance (or compatible LLM API)
 - System `man` command available
+- One of the following:
+  - **Ollama**: Running instance (default)
+  - **Perplexity**: API key
+  - **OpenAI**: API key
 
-## Starting Ollama
+## Provider Setup
+
+### Ollama (Default)
 
 If you get a connection error, make sure Ollama is running:
 
@@ -123,6 +148,26 @@ ollama pull llama3.2
 
 # Now run mansplain
 mansplain awk
+```
+
+### Perplexity
+
+Get an API key from [Perplexity](https://www.perplexity.ai/):
+
+```bash
+export MANSPLAIN_API_KEY="your-perplexity-api-key"
+mansplain awk --provider perplexity
+```
+
+Available models: `llama-3.1-sonar-small-128k-online`, `llama-3.1-sonar-large-128k-online`, `llama-3.1-sonar-huge-128k-online`
+
+### OpenAI
+
+Get an API key from [OpenAI](https://platform.openai.com/):
+
+```bash
+export MANSPLAIN_API_KEY="your-openai-api-key"
+mansplain awk --provider openai --model gpt-4o
 ```
 
 ## Development

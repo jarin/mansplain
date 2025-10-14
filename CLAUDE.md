@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`mansplain` is a Rust CLI tool that fetches man pages and pipes them through an LLM (like Ollama) to generate condescending, "mansplaining" explanations. It works similarly to the `man` command but with added personality.
+`mansplain` is a Rust CLI tool that fetches man pages and pipes them through an LLM (Ollama, Perplexity, OpenAI, or compatible providers) to generate parodically condescending, "mansplaining" explanations. It works similarly to the `man` command but with added personality.
 
 ## Tool Management
 
@@ -69,7 +69,9 @@ cargo clippy
 - `src/main.rs` - Single-file CLI application containing:
   - **CLI argument parsing** using `clap` with derive macros
   - **Man page fetching** via subprocess calling the `man` command
-  - **LLM API integration** supporting Ollama API (and compatible endpoints)
+  - **Multi-provider LLM API integration**:
+    - Ollama API (default)
+    - OpenAI-compatible API (Perplexity, OpenAI, and others)
   - **Streaming support** for real-time output
 
 ### Dependencies
@@ -86,19 +88,24 @@ Core dependencies (see `Cargo.toml`):
 The tool supports multiple configuration methods (in order of precedence):
 
 1. **Command-line arguments**:
-   - `--model` / `-m` - LLM model name (default: llama3.2)
-   - `--api-url` / `-a` - API endpoint URL (default: http://localhost:11434)
+   - `--provider` - LLM provider (ollama, perplexity, openai) (default: ollama)
+   - `--model` / `-m` - LLM model name
+   - `--api-url` / `-a` - API endpoint URL
+   - `--api-key` / `-k` - API key (for Perplexity, OpenAI, etc.)
    - `--prompt` / `-p` - Custom system prompt
    - `--stream` / `-s` - Enable streaming output
 
 2. **Environment variables**:
+   - `MANSPLAIN_PROVIDER` - LLM provider
    - `MANSPLAIN_MODEL` - LLM model name
    - `MANSPLAIN_API_URL` - API endpoint URL
+   - `MANSPLAIN_API_KEY` - API key
    - `MANSPLAIN_PROMPT` - Custom system prompt
 
-3. **Defaults**:
-   - Model: `llama3.2`
-   - API URL: `http://localhost:11434` (Ollama default)
+3. **Defaults** (by provider):
+   - **Ollama**: Model `gemma3:12b`, API URL `http://localhost:11434`
+   - **Perplexity**: Model `llama-3.1-sonar-small-128k-online`, API URL `https://api.perplexity.ai`
+   - **OpenAI**: Model `gpt-4`, API URL `https://api.openai.com/v1`
    - Prompt: See `DEFAULT_SYSTEM_PROMPT` in main.rs or `prompt.txt`
 
 ### Customizing the Prompt
@@ -155,11 +162,17 @@ mansplain vim
 
 ### LLM API Integration
 
-Currently supports Ollama's API format (`/api/generate` endpoint). To add support for other LLMs:
+Supports two API formats:
+
+1. **Ollama API** (`/api/generate` endpoint) - via `query_ollama` function
+2. **OpenAI-compatible API** (`/chat/completions` endpoint) - via `query_openai_compatible` function
+   - Works with Perplexity, OpenAI, and other OpenAI-compatible providers
+
+To add support for other API formats:
 
 1. Create new request/response structs for the API format
-2. Add a new query function (similar to `query_ollama`)
-3. Add CLI flag to select API type
+2. Add a new query function (similar to `query_ollama` or `query_openai_compatible`)
+3. Add a new provider case in the main match statement
 4. Update documentation
 
 ### Error Handling
