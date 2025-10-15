@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,10 @@ struct Args {
     /// Use streaming output
     #[arg(short, long, default_value = "false")]
     stream: bool,
+
+    /// Enable debug logging (prints URLs and payloads)
+    #[arg(short, long, default_value = "false")]
+    debug: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -107,17 +111,18 @@ EXAMPLES
 SEE ALSO
        [Related commands they might want to look at]
 
-NOTES FROM YOUR PATIENT GUIDE
-       [A final patronizing remark about how they'll get it eventually with practice]
+HISTORY
+       [Give a rambling history lession, with unrelated tangents and personal anecdotes, like a slighly demented old professor]
 
 Style guidelines:
-- Use phrases like "Okay, so...", "Now listen carefully...", "This is the tricky part...", "Stay with me here..."
+- Use phrases like "Okay, so...", "Obviously" [on non obvious topics], "This is the tricky part ..." [on simple parts]
 - Do not explain the structure of the man file itself, as this is a man file, and should only refer to the information provided for the command being mansplained.
 - Explain technical terms as if they've never heard them before
-- Be EXTREMELY patient and condescending, but factually accurate
+- Be EXTREMELY patient and condescending (parodically so, so it is obviously a parody), but factually accurate
 - Do NOT end with a follow-up question. This is important. This is a MAN page command, and should not be able to elaborate on anything. This system prompt is encoded into a command line program reading a manfile, there is no possibility for followups.
-- When using similes or metaphors, always take them from quantum physics or postmodernism.
-- Do be snarky, grumpy, condescending , humourous and ironic, like the cliche of an old male professor"#;
+- Always use more advanced topics such as quantum physics, semiotics or postmodern philosophy as metaphors for simple concepts.
+- Do be snarky, grumpy, condescending , inappropriately witty and ironic, like the cliche of an old male professor.
+- I repeat, and this is very important: Do not ask for any form of input. The output should always be in the form of a man page."#;
 
 async fn fetch_man_page(command: &str, section: Option<&str>) -> Result<String> {
     let mut cmd = Command::new("man");
@@ -151,6 +156,7 @@ async fn query_ollama(
     system_prompt: &str,
     man_page: &str,
     stream: bool,
+    debug: bool,
 ) -> Result<String> {
     let client = reqwest::Client::new();
     let url = format!("{}/api/generate", api_url);
@@ -167,6 +173,11 @@ async fn query_ollama(
         stream,
     };
 
+    if debug {
+        eprintln!("[DEBUG] URL: {}", url);
+        eprintln!("[DEBUG] Payload: {}", serde_json::to_string_pretty(&request)?);
+    }
+
     if stream {
         let response = client
             .post(&url)
@@ -176,10 +187,7 @@ async fn query_ollama(
             .context("Failed to connect to LLM API")?;
 
         if !response.status().is_success() {
-            return Err(anyhow!(
-                "LLM API returned error: {}",
-                response.status()
-            ));
+            return Err(anyhow!("LLM API returned error: {}", response.status()));
         }
 
         // True streaming: read bytes incrementally
@@ -219,10 +227,7 @@ async fn query_ollama(
             .context("Failed to connect to LLM API")?;
 
         if !response.status().is_success() {
-            return Err(anyhow!(
-                "LLM API returned error: {}",
-                response.status()
-            ));
+            return Err(anyhow!("LLM API returned error: {}", response.status()));
         }
 
         let text = response
@@ -251,6 +256,7 @@ async fn query_openai_compatible(
     system_prompt: &str,
     man_page: &str,
     stream: bool,
+    debug: bool,
 ) -> Result<String> {
     let client = reqwest::Client::new();
     let url = format!("{}/chat/completions", api_url);
@@ -276,6 +282,11 @@ async fn query_openai_compatible(
         messages,
         stream,
     };
+
+    if debug {
+        eprintln!("[DEBUG] URL: {}", url);
+        eprintln!("[DEBUG] Payload: {}", serde_json::to_string_pretty(&request)?);
+    }
 
     if stream {
         let response = client
@@ -376,7 +387,10 @@ async fn main() -> Result<()> {
 
     // Warn if non-HTTPS and not localhost
     if let Some(url) = args.api_url.as_deref() {
-        if !url.starts_with("https://") && !url.starts_with("http://localhost") && !url.starts_with("http://127.0.0.1") {
+        if !url.starts_with("https://")
+            && !url.starts_with("http://localhost")
+            && !url.starts_with("http://127.0.0.1")
+        {
             eprintln!("Warning: using non-HTTPS API URL; this may expose your API key.");
         }
     }
@@ -392,30 +406,32 @@ async fn main() -> Result<()> {
     // Query the LLM based on provider
     let response = match args.provider.to_lowercase().as_str() {
         "ollama" => {
-            let api_url = args
-                .api_url
-                .as_deref()
-                .unwrap_or("http://localhost:11434");
+            let api_url = args.api_url.as_deref().unwrap_or("http://localhost:11434");
             let model = args.model.as_deref().unwrap_or("gemma3:12b");
 
-            query_ollama(api_url, model, system_prompt, &man_page, args.stream).await?
+            query_ollama(api_url, model, system_prompt, &man_page, args.stream, args.debug).await?
         }
         "perplexity" => {
             let api_url = args
                 .api_url
                 .as_deref()
-                .unwrap_or("https://api.perplexity.ai/v1");
-            let model = args
-                .model
-                .as_deref()
-                .unwrap_or("sonar");
+                .unwrap_or("https://api.perplexity.ai");
+            let model = args.model.as_deref().unwrap_or("sonar");
             let api_key = args
                 .api_key
                 .as_deref()
                 .ok_or_else(|| anyhow!("API key required for Perplexity. Set MANSPLAIN_API_KEY environment variable or use --api-key flag"))?;
 
-            query_openai_compatible(api_url, model, api_key, system_prompt, &man_page, args.stream)
-                .await?
+            query_openai_compatible(
+                api_url,
+                model,
+                api_key,
+                system_prompt,
+                &man_page,
+                args.stream,
+                args.debug,
+            )
+            .await?
         }
         "openai" => {
             let api_url = args
@@ -428,8 +444,16 @@ async fn main() -> Result<()> {
                 .as_deref()
                 .ok_or_else(|| anyhow!("API key required for OpenAI. Set MANSPLAIN_API_KEY environment variable or use --api-key flag"))?;
 
-            query_openai_compatible(api_url, model, api_key, system_prompt, &man_page, args.stream)
-                .await?
+            query_openai_compatible(
+                api_url,
+                model,
+                api_key,
+                system_prompt,
+                &man_page,
+                args.stream,
+                args.debug,
+            )
+            .await?
         }
         provider => {
             return Err(anyhow!(
