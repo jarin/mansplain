@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 
@@ -90,7 +91,7 @@ NAME
        Brief description of what this command does (in simple terms a child would understand)
 
 SYNOPSIS
-       How to use it (but explain what "synopsis" means first, they probably don't know)
+       How to use it.
 
 DESCRIPTION
        Oh boy, where do I even START explaining this to you? [Explain the command's purpose in an exaggeratedly patient, talk-down-to manner, as if they've never used a computer before]
@@ -111,13 +112,20 @@ NOTES FROM YOUR PATIENT GUIDE
 
 Style guidelines:
 - Use phrases like "Okay, so...", "Now listen carefully...", "This is the tricky part...", "Stay with me here..."
+- Do not explain the structure of the man file itself, as this is a man file, and should only refer to the information provided for the command being mansplained.
 - Explain technical terms as if they've never heard them before
 - Be EXTREMELY patient and condescending, but factually accurate
 - Do NOT end with a follow-up question. This is important. This is a MAN page command, and should not be able to elaborate on anything. This system prompt is encoded into a command line program reading a manfile, there is no possibility for followups.
+- When using similes or metaphors, always take them from quantum physics or postmodernism.
 - Do be snarky, grumpy, condescending , humourous and ironic, like the cliche of an old male professor"#;
 
 async fn fetch_man_page(command: &str, section: Option<&str>) -> Result<String> {
     let mut cmd = Command::new("man");
+
+    // Force plain output, avoid paging and control characters
+    cmd.env("MANPAGER", "cat");
+    cmd.env("LC_ALL", "C.UTF-8");
+    cmd.env("LANG", "C.UTF-8");
 
     if let Some(sec) = section {
         cmd.arg(sec);
@@ -174,25 +182,33 @@ async fn query_ollama(
             ));
         }
 
-        let text = response
-            .text()
-            .await
-            .context("Failed to read response body")?;
-
-        // Parse streaming response
+        // True streaming: read bytes incrementally
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
         let mut full_response = String::new();
-        for line in text.lines() {
-            if let Ok(chunk) = serde_json::from_str::<OllamaResponse>(line) {
-                if let Some(resp) = chunk.response {
-                    print!("{}", resp);
-                    full_response.push_str(&resp);
-                }
-                if chunk.done {
-                    break;
+
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.context("Failed to read stream chunk")?;
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+            // Process complete lines
+            while let Some(pos) = buffer.find('\n') {
+                let line = buffer[..pos].to_string();
+                buffer.drain(..=pos);
+
+                if let Ok(obj) = serde_json::from_str::<OllamaResponse>(&line) {
+                    if let Some(text) = obj.response {
+                        print!("{}", text);
+                        full_response.push_str(&text);
+                    }
+                    if obj.done {
+                        println!();
+                        return Ok(full_response);
+                    }
                 }
             }
         }
-        println!(); // Final newline
+        println!();
         Ok(full_response)
     } else {
         let response = client
@@ -281,21 +297,31 @@ async fn query_openai_compatible(
             ));
         }
 
-        let text = response
-            .text()
-            .await
-            .context("Failed to read response body")?;
-
-        // Parse streaming response (SSE format)
+        // True streaming: read bytes incrementally (SSE format)
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
         let mut full_response = String::new();
-        for line in text.lines() {
-            if line.starts_with("data: ") {
-                let json_str = line.trim_start_matches("data: ");
-                if json_str == "[DONE]" {
-                    break;
+
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.context("Failed to read stream chunk")?;
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+            // Process complete lines prefixed with "data: "
+            while let Some(pos) = buffer.find('\n') {
+                let line = buffer[..pos].trim_end().to_string();
+                buffer.drain(..=pos);
+
+                if !line.starts_with("data: ") {
+                    continue;
                 }
-                if let Ok(chunk) = serde_json::from_str::<OpenAIResponse>(json_str) {
-                    if let Some(choice) = chunk.choices.first() {
+                let data = line.trim_start_matches("data: ").trim();
+                if data == "[DONE]" {
+                    println!();
+                    return Ok(full_response);
+                }
+
+                if let Ok(obj) = serde_json::from_str::<OpenAIResponse>(data) {
+                    if let Some(choice) = obj.choices.first() {
                         if let Some(delta) = &choice.delta {
                             if let Some(content) = &delta.content {
                                 print!("{}", content);
@@ -306,7 +332,7 @@ async fn query_openai_compatible(
                 }
             }
         }
-        println!(); // Final newline
+        println!();
         Ok(full_response)
     } else {
         let response = client
@@ -348,6 +374,13 @@ async fn query_openai_compatible(
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Warn if non-HTTPS and not localhost
+    if let Some(url) = args.api_url.as_deref() {
+        if !url.starts_with("https://") && !url.starts_with("http://localhost") && !url.starts_with("http://127.0.0.1") {
+            eprintln!("Warning: using non-HTTPS API URL; this may expose your API key.");
+        }
+    }
+
     // Fetch the man page
     let man_page = fetch_man_page(&args.command, args.section.as_deref())
         .await
@@ -363,7 +396,7 @@ async fn main() -> Result<()> {
                 .api_url
                 .as_deref()
                 .unwrap_or("http://localhost:11434");
-            let model = args.model.as_deref().unwrap_or("gemma2:12b");
+            let model = args.model.as_deref().unwrap_or("gemma3:12b");
 
             query_ollama(api_url, model, system_prompt, &man_page, args.stream).await?
         }
@@ -371,11 +404,11 @@ async fn main() -> Result<()> {
             let api_url = args
                 .api_url
                 .as_deref()
-                .unwrap_or("https://api.perplexity.ai");
+                .unwrap_or("https://api.perplexity.ai/v1");
             let model = args
                 .model
                 .as_deref()
-                .unwrap_or("llama-3.1-sonar-small-128k-online");
+                .unwrap_or("sonar");
             let api_key = args
                 .api_key
                 .as_deref()
@@ -389,7 +422,7 @@ async fn main() -> Result<()> {
                 .api_url
                 .as_deref()
                 .unwrap_or("https://api.openai.com/v1");
-            let model = args.model.as_deref().unwrap_or("gpt-4");
+            let model = args.model.as_deref().unwrap_or("gpt-4o-mini");
             let api_key = args
                 .api_key
                 .as_deref()
