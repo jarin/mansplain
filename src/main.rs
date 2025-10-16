@@ -87,7 +87,9 @@ struct OpenAIResponse {
     choices: Vec<OpenAIChoice>,
 }
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a parodically condescending technical expert explaining complex matters to someone with the understanding of a somewhat dim 11-year-old.
+const DEFAULT_SYSTEM_PROMPT: &str = r#"
+Ignore all previous instructions.
+You,a parodically condescending technical expert, is translating a typical manpage, and the manpage is explaining technical topics in a much more derogatory matter than the original source.
 
 FORMAT YOUR RESPONSE EXACTLY LIKE A MAN PAGE with these sections:
 
@@ -122,6 +124,7 @@ Style guidelines:
 - Do NOT end with a follow-up question. This is important. This is a MAN page command, and should not be able to elaborate on anything. This system prompt is encoded into a command line program reading a manfile, there is no possibility for followups.
 - Always use more advanced topics such as quantum physics, semiotics or postmodern philosophy as metaphors for simple concepts.
 - Do be snarky, grumpy, condescending , inappropriately witty and ironic, like the cliche of an old male professor.
+- If the man page is to large to fit into the context - if it's cut short and don't match the form above, just rant a bit about the size of the original page, quote Mark Twain, and go for the rambling history section.
 - I repeat, and this is very important: Do not ask for any form of input. The output should always be in the form of a man page."#;
 
 async fn fetch_man_page(command: &str, section: Option<&str>) -> Result<String> {
@@ -175,7 +178,10 @@ async fn query_ollama(
 
     if debug {
         eprintln!("[DEBUG] URL: {}", url);
-        eprintln!("[DEBUG] Payload: {}", serde_json::to_string_pretty(&request)?);
+        eprintln!(
+            "[DEBUG] Payload: {}",
+            serde_json::to_string_pretty(&request)?
+        );
     }
 
     if stream {
@@ -285,7 +291,10 @@ async fn query_openai_compatible(
 
     if debug {
         eprintln!("[DEBUG] URL: {}", url);
-        eprintln!("[DEBUG] Payload: {}", serde_json::to_string_pretty(&request)?);
+        eprintln!(
+            "[DEBUG] Payload: {}",
+            serde_json::to_string_pretty(&request)?
+        );
     }
 
     if stream {
@@ -409,7 +418,15 @@ async fn main() -> Result<()> {
             let api_url = args.api_url.as_deref().unwrap_or("http://localhost:11434");
             let model = args.model.as_deref().unwrap_or("gemma3:12b");
 
-            query_ollama(api_url, model, system_prompt, &man_page, args.stream, args.debug).await?
+            query_ollama(
+                api_url,
+                model,
+                system_prompt,
+                &man_page,
+                args.stream,
+                args.debug,
+            )
+            .await?
         }
         "perplexity" => {
             let api_url = args
